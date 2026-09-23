@@ -2,8 +2,22 @@ name: HMT Watch Stock Checker
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/10 * * * *" # 10 minutes is generally more reliable on GitHub Actions
   workflow_dispatch:
+    inputs:
+      test_ping:
+        description: "Send a Telegram test ping and exit (no real check)"
+        type: boolean
+        default: false
+
+# Required to allow the bot to commit state.json back to your repo
+permissions:
+  contents: write
+
+# Prevents multiple jobs from running at the same time if the website is slow
+concurrency:
+  group: hmt-watch-watch
+  cancel-in-progress: false
 
 jobs:
   check-stock:
@@ -25,4 +39,16 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TEST_PING: ${{ inputs.test_ping == true && '1' || '0' }}
         run: python hmt_checker.py
+
+      # This will only run if your Python script modifies a file called 'state.json'
+      - name: Commit state if changed
+        run: |
+          if ! git diff --quiet -- state.json; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add state.json
+            git commit -m "update watch state"
+            git push
+          fi
